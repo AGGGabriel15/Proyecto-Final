@@ -67,6 +67,7 @@ namespace Proyecto_Final
             Txt_Password.Text = "";;
             Txt_Sexo.Text = "";
             Txt_Sexo.SelectedItem = -1;
+            Check_Admin.Checked = false;
 
             Btn_Nuevo.Enabled = true;
             Btn_Editar.Enabled = true;
@@ -83,28 +84,88 @@ namespace Proyecto_Final
 
         private void Btn_Editar_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(Txt_Nombre.Text) || string.IsNullOrEmpty(Txt_Apellido.Text) ||
-                string.IsNullOrEmpty(Txt_Correo.Text) || string.IsNullOrEmpty(Txt_Usuario.Text) ||
-                string.IsNullOrEmpty(Txt_Password.Text) || Txt_Sexo.SelectedIndex == -1)
+            string nombre = Txt_Nombre.Text.Trim();
+            string apellido = Txt_Apellido.Text.Trim();
+            string correo = Txt_Correo.Text.Trim();
+            string usuario = Txt_Usuario.Text.Trim();
+            string contraseña = Txt_Password.Text.Trim();
+            string sexo = Txt_Sexo.SelectedItem?.ToString();
+
+            if (string.IsNullOrEmpty(nombre) || string.IsNullOrEmpty(apellido) ||
+                string.IsNullOrEmpty(correo) || string.IsNullOrEmpty(usuario) ||
+                string.IsNullOrEmpty(contraseña) || string.IsNullOrEmpty(sexo))
             {
                 MessageBox.Show("Por favor, complete todos los campos.");
                 return;
             }
-            
-            string query = "UPDATE Usuarios Set Userd = @usuario, Pass = @contraseña, email = @correo, First_name = @nombre, Last_name = @apellido, sexo = @sexo, issuperuser = @issuperuser where Userd = @usuario";
-            conexion.Open();
-            SqlCommand comando = new SqlCommand(query, conexion);
-            comando.Parameters.AddWithValue("@usuario", Txt_Usuario.Text);
-            comando.Parameters.AddWithValue("@contraseña", Txt_Password.Text);
-            comando.Parameters.AddWithValue("@correo", Txt_Correo.Text);
-            comando.Parameters.AddWithValue("@nombre", Txt_Nombre.Text);
-            comando.Parameters.AddWithValue("@apellido", Txt_Apellido.Text);
-            comando.Parameters.AddWithValue("@sexo", Txt_Sexo.Text);
-            comando.Parameters.AddWithValue("@issuperuser", Check_Admin.Checked);
-            comando.ExecuteNonQuery();
-            conexion.Close();
-            MessageBox.Show("Se actualizo el Usuario correctamente");
-            dataGridView1.DataSource = sql.mostrarDatos();
+
+            // Validar formato de correo
+            string patronCorreo = @"^[^@\s]+@[^@\s]+\.(com|net|org|edu|gob|mx|es|co|us)$";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(correo, patronCorreo))
+            {
+                MessageBox.Show("Por favor, ingrese un correo electrónico válido.", "Usuario", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                if (conexion.State != ConnectionState.Open)
+                {
+                    conexion.Open();
+                }
+
+                // Verificar si el usuario o correo ya están en otro registro
+                string verificacionQuery = "SELECT COUNT(*) FROM Usuarios WHERE (Userd = @Usuario OR email = @Correo) AND Userd != @UsuarioOriginal";
+
+                using (SqlCommand verificarCmd = new SqlCommand(verificacionQuery, conexion))
+                {
+                    verificarCmd.Parameters.AddWithValue("@Usuario", usuario);
+                    verificarCmd.Parameters.AddWithValue("@Correo", correo);
+                    verificarCmd.Parameters.AddWithValue("@UsuarioOriginal", dataGridView1.CurrentRow.Cells["Userd"].Value.ToString());
+
+                    int existe = (int)verificarCmd.ExecuteScalar();
+
+                    if (existe > 0)
+                    {
+                        MessageBox.Show("Ya existe otro usuario o correo con esos datos.");
+                        return;
+                    }
+                }
+
+                // Actualizar datos
+                string query = "UPDATE Usuarios SET " +
+                               "Userd = @usuario, Pass = @contraseña, email = @correo, " +
+                               "First_name = @nombre, Last_name = @apellido, sexo = @sexo, issuperuser = @issuperuser " +
+                               "WHERE Userd = @usuarioOriginal";
+
+                using (SqlCommand comando = new SqlCommand(query, conexion))
+                {
+                    comando.Parameters.AddWithValue("@usuario", usuario);
+                    comando.Parameters.AddWithValue("@contraseña", contraseña);
+                    comando.Parameters.AddWithValue("@correo", correo);
+                    comando.Parameters.AddWithValue("@nombre", nombre);
+                    comando.Parameters.AddWithValue("@apellido", apellido);
+                    comando.Parameters.AddWithValue("@sexo", sexo);
+                    comando.Parameters.AddWithValue("@issuperuser", Check_Admin.Checked);
+                    comando.Parameters.AddWithValue("@usuarioOriginal", dataGridView1.CurrentRow.Cells["Userd"].Value.ToString());
+
+                    comando.ExecuteNonQuery();
+                }
+
+                MessageBox.Show("Se actualizó el usuario correctamente.");
+                dataGridView1.DataSource = sql.mostrarDatos();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error al actualizar el usuario: " + ex.Message);
+            }
+            finally
+            {
+                if (conexion.State == ConnectionState.Open)
+                {
+                    conexion.Close();
+                }
+            }
         }
 
         private void Btn_Nuevo_Click(object sender, EventArgs e)
@@ -117,7 +178,8 @@ namespace Proyecto_Final
             Txt_Password.Text = "";
             Txt_Sexo.SelectedIndex = -1;
             Txt_Sexo.Text = "";
-            
+            Check_Admin.Checked = false;
+
         }
 
         private void Btn_Eliminar_Click(object sender, EventArgs e)
@@ -180,6 +242,13 @@ namespace Proyecto_Final
                 return;
             }
 
+            string patronCorreo = @"^[^@\s]+@[^@\s]+\.(com|net|org|edu|gob|mx|es|co|us)$";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(correo, patronCorreo))
+            {
+                MessageBox.Show("Por favor, ingrese un correo electrónico válido.", "Usuario",MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             try
             {
                 if (conexion.State != ConnectionState.Open)
@@ -187,17 +256,34 @@ namespace Proyecto_Final
                     conexion.Open();
                 }
 
-                string query = "INSERT INTO USUARIOS (Usuario, Contraseña, Correo, Nombre, Apellido, Sexo) " +
-                               "VALUES (@Usuario, @Contraseña, @Correo, @Nombre, @Apellido, @Sexo)";
+                string verificacionQuery = "SELECT COUNT(*) FROM Usuarios WHERE Userd = @Usuario OR email = @Correo";
+
+                using (SqlCommand verificarCmd = new SqlCommand(verificacionQuery, conexion))
+                {
+                    verificarCmd.Parameters.AddWithValue("@Usuario", usuario);
+                    verificarCmd.Parameters.AddWithValue("@Correo", correo);
+
+                    int existe = (int)verificarCmd.ExecuteScalar();
+
+                    if (existe > 0)
+                    {
+                        MessageBox.Show("El nombre de usuario o el correo ya están registrados.");
+                        return;
+                    }
+                }
+
+                string query = "INSERT INTO USUARIOS (Userd, Pass, First_name, Last_name, email, sexo, issuperuser, Estado) " +
+                               "VALUES (@Usuario, @pass, @Nombre, @Apellido, @Correo, @Sexo, @issuperuser, 1)";
 
                 using (SqlCommand command = new SqlCommand(query, conexion))
                 {
                     command.Parameters.AddWithValue("@Usuario", usuario);
-                    command.Parameters.AddWithValue("@Contraseña", contraseña);
-                    command.Parameters.AddWithValue("@Correo", correo);
+                    command.Parameters.AddWithValue("@pass", contraseña);
                     command.Parameters.AddWithValue("@Nombre", nombre);
                     command.Parameters.AddWithValue("@Apellido", apellido);
+                    command.Parameters.AddWithValue("@Correo", correo);
                     command.Parameters.AddWithValue("@Sexo", sexo);
+                    command.Parameters.AddWithValue("@issuperuser", Check_Admin.Checked);
 
                     int rowsAffected = command.ExecuteNonQuery();
 
@@ -232,14 +318,7 @@ namespace Proyecto_Final
 
         private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
-            //DataGridViewRow fila = dataGridView1.Rows[e.RowIndex];
-            //Txt_Usuario.Text = Convert.ToString(fila.Cells[1].Value);
-            //Txt_Password.Text = Convert.ToString(fila.Cells[2].Value);
-            //Txt_Correo.Text = Convert.ToString(fila.Cells[3].Value);
-            //Txt_Nombre.Text = Convert.ToString(fila.Cells[4].Value);
-            //Txt_Apellido.Text = Convert.ToString(fila.Cells[5].Value);
-            //Txt_Sexo.SelectedItem = Convert.ToString(fila.Cells[6].Value);
-            //Check_Admin.Checked = Convert.ToBoolean(fila.Cells[7].Value);
+
         }
 
         private void Txt_Nombre_KeyPress(object sender, KeyPressEventArgs e)
